@@ -28,5 +28,5 @@ With all that said, this tool is still pretty cool. The challenges for this proj
     The data does not contain plural and tense variations of the words, for example: "abandon" is in data but "abandoned" is not. So, if the sentence contained "abandoned", the AI
     wouldn't be able to detect the sentiment.
 
-    Again, `nltk` comes to the rescue! The `from nltk.stem.snowball` stemmer module can be return the stem of a word (stem referring to the base version of the word without prefixes or suffixes)
+    Again, `nltk` comes to the rescue! The `nltk.stem.snowball` stemmer module can be return the stem of a word (stem referring to the base version of the word without prefixes or suffixes)
     So, for any word that can't be found in the data the AI will stem the word and try again.
