@@ -1,133 +1,84 @@
-# This one is able to classify sentences
-# However, the approach is not even close to perfect
-# The fundamental challenge here lies in seperating the sentence in a way that will allow the program to 
-# utilise the data in a much more reliable way
-# Right now, all the words are being considered one by one, whereas an ideal approach would be to group words 
-# to better model the context of the sentences
-
-import random
 import os
-import sys
-import numpy as np
+import nltk
+from nltk.tokenize import MWETokenizer
+from nltk.stem.snowball import EnglishStemmer
 
-from sklearn import svm
-from sklearn.linear_model import Perceptron
-from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
-
-# model = Perceptron()
-# model = svm.SVC()
-# model = KNeighborsClassifier(n_neighbors=3)
-model = GaussianNB()
-
-
-
+# tokenizer = TweetTokenizer(strip_handles=True, reduce_len=True)
+mwe_tknzr = MWETokenizer(separator=' ') # Multi-word-expression tokenizer
+stemmer = EnglishStemmer() # Word stemmer
+scores = {} # dict of words and their scores
 
 def main():
-
-    # Read data from files
-    if len(sys.argv) != 2:
-        sys.exit("Usage: python sentiment.py corpus")
-
-    data, scores = load_data(sys.argv[1])
-
-    # Separate data into training and testing groups
-    # evidence = np.reshape([row["evidence"] for row in data], (-1, 1))
-    evidence = [row["evidence"] for row in data]
-    labels = [row["label"] for row in data]
-    # print(evidence)
-    # print(labels)
-    X_training, X_testing, y_training, y_testing = train_test_split(
-        evidence, labels, test_size=0.2
-    )
-
-    # Fit model
-    model.fit(X_training, y_training)
-
-    # Make predictions on the testing set
-    predictions = model.predict(X_testing)
-
-    # Compute how well we performed
-    correct = (y_testing == predictions).sum()
-    incorrect = (y_testing != predictions).sum()
-    total = len(predictions)
-
-    # Print results
-    print(f"Results for model {type(model).__name__}")
-    print(f"Correct: {correct}")
-    print(f"Incorrect: {incorrect}")
-    print(f"Accuracy: {100 * correct / total:.2f}%")
-
-    query = input("sentence: ")
-    score = compute_score(query, scores)
-    
-    print(classify(model, score))
+    load_data() # populate the scores dict
+    s = input("sentence: ")
+    print(get_sentiment(s))
 
 
+def check_mwe(word):
+    """If there are multiple words in the line, add the multi-word-expression to the tokenizer"""
+    tokens = word.split()
+    if len(tokens) != 1:
+        mwe_tknzr.add_mwe(tokens)
 
-def compute_score(sentence, scores):
-    document_words = sentence.split()
 
-    score = 0
-    for word in document_words:
-        score += scores.get(word, 0)
-
-    score = score / len(document_words)
-    return score
-
-def load_data(directory):
-    data = []
-    scores = {}
-
+def load_data(directory='corpus2'):
+    """Extract words and their scores from the desired corpus"""
     # Read data in from files
     with open(os.path.join(directory, 'positives.txt')) as f:
         for line in f.read().splitlines():
             
             row = line.rstrip('\n').split(',')
-
             word = row[0]
+            check_mwe(word)
             intensity = float(row[-1])
             
+            scores[word] = intensity
 
-            scores[word] = float(intensity)
-            # scores[word] = [float(cell) for cell in row[1:]]
-            data.append({
-                "evidence": [float(cell) for cell in row[1:]],
-                "label": "positive"
-            })
-            
     with open(os.path.join(directory, 'negatives.txt')) as f:
         for line in f.read().splitlines():
-            
-            # word, intensity = line.rstrip('\n').split(',')
-            # scores[word] = float(intensity)
-            # data.append({
-            #     "evidence": float(intensity),
-            #     "label": "negative"
-            # })
-            row = line.rstrip('\n').split(',')
 
+            row = line.rstrip('\n').split(',')
             word = row[0]
+            check_mwe(word)
             intensity = float(row[-1])
             
+            scores[word] = intensity
 
-            scores[word] = float(intensity)
-            data.append({
-                "evidence": [float(cell) for cell in row[1:]],
-                "label": "negative"
-            })
 
-    return data, scores
+def extract_words(sentence):
+    """Convert a sentence into a set of tokens taking in to account multi-word-expressions"""
+    # Create simple tokens of all words in the sentence
+    words = [word.lower() for word in nltk.word_tokenize(sentence) if any(c.isalpha() for c in word)]
+    # Split the tokens into multi-word-expressions, if any
+    tokens = mwe_tknzr.tokenize(words)
+    # print(tokens)
+    return set(tokens)
 
-def classify(classifier, score):
-    score = np.reshape(score, (1, -1))
-    return classifier.predict(score)
+
+def compute_score(sentence):
+    """Calculate the sentiment score for the given sentence"""
+    document_words = extract_words(sentence)
+    score = 0
+    for word in document_words:
+        grade = scores.get(word.lower(), 0)
+        if grade == 0:
+            # If the word isn't in the scores dict, try to get the stemmed version of the word from the dict (cars becomes car, abandoned becomes abandon, etc.)
+            grade = scores.get(stemmer.stem(word.lower()), 0)
+        score += grade
+    # Convert the score in to a -1 to 1 scale
+    score = score / len(document_words)
+    # print(score)
+    return score
+
+
+def get_sentiment(sentence):
+    """Classify the sentence to be positive or negative"""
+    score = compute_score(sentence)
+    if score > 0:
+        return ("Positive", score)
+    else:
+        return ("Negative", score)
+
 
 if __name__ == "__main__":
     main()
-
-# Get trending topics from Twitter api
-# Using twint search to get tweets
-# Use NaiveBayes classifier to classify each tweet
-# Return the overall sentiment of the trend
