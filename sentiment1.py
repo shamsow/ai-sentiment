@@ -1,133 +1,97 @@
-# This one is able to classify sentences
-# However, the approach is not even close to perfect
-# The fundamental challenge here lies in seperating the sentence in a way that will allow the program to 
-# utilise the data in a much more reliable way
-# Right now, all the words are being considered one by one, whereas an ideal approach would be to group words 
-# to better model the context of the sentences
-
-import random
 import os
-import sys
-import numpy as np
+import nltk
+from nltk.tokenize import MWETokenizer
+from nltk.stem.snowball import EnglishStemmer
 
-from sklearn import svm
-from sklearn.linear_model import Perceptron
-from sklearn.model_selection import train_test_split
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
-
-# model = Perceptron()
-# model = svm.SVC()
-# model = KNeighborsClassifier(n_neighbors=3)
-model = GaussianNB()
-
-
-
+# tokenizer = TweetTokenizer(strip_handles=True, reduce_len=True)
 
 def main():
+    classifier = Sentiment('corpus2')
+    classifier.start()
 
-    # Read data from files
-    if len(sys.argv) != 2:
-        sys.exit("Usage: python sentiment.py corpus")
+class Sentiment:
+    mwe_tknzr = MWETokenizer(separator=' ') # Multi-word-expression tokenizer
+    stemmer = EnglishStemmer() # Word stemmer
+    scores = {} # dict of words and their scores
 
-    data, scores = load_data(sys.argv[1])
+    def __init__(self, corpus):
+        self.load_data(corpus)
 
-    # Separate data into training and testing groups
-    # evidence = np.reshape([row["evidence"] for row in data], (-1, 1))
-    evidence = [row["evidence"] for row in data]
-    labels = [row["label"] for row in data]
-    # print(evidence)
-    # print(labels)
-    X_training, X_testing, y_training, y_testing = train_test_split(
-        evidence, labels, test_size=0.2
-    )
-
-    # Fit model
-    model.fit(X_training, y_training)
-
-    # Make predictions on the testing set
-    predictions = model.predict(X_testing)
-
-    # Compute how well we performed
-    correct = (y_testing == predictions).sum()
-    incorrect = (y_testing != predictions).sum()
-    total = len(predictions)
-
-    # Print results
-    print(f"Results for model {type(model).__name__}")
-    print(f"Correct: {correct}")
-    print(f"Incorrect: {incorrect}")
-    print(f"Accuracy: {100 * correct / total:.2f}%")
-
-    query = input("sentence: ")
-    score = compute_score(query, scores)
     
-    print(classify(model, score))
+    def check_mwe(self, word):
+        """If there are multiple words in the line, add the multi-word-expression to the tokenizer"""
+        tokens = word.split()
+        if len(tokens) != 1:
+            self.mwe_tknzr.add_mwe(tokens)
 
 
+    def load_data(self, directory):
+        """Extract words and their scores from the desired corpus"""
+        # Read data in from files
+        with open(os.path.join(directory, 'positives.txt')) as f:
+            for line in f.read().splitlines():
+                
+                row = line.rstrip('\n').split(',')
+                word = row[0]
+                self.check_mwe(word)
+                intensity = float(row[-1])
+                
+                self.scores[word] = intensity
 
-def compute_score(sentence, scores):
-    document_words = sentence.split()
+        with open(os.path.join(directory, 'negatives.txt')) as f:
+            for line in f.read().splitlines():
 
-    score = 0
-    for word in document_words:
-        score += scores.get(word, 0)
+                row = line.rstrip('\n').split(',')
+                word = row[0]
+                self.check_mwe(word)
+                intensity = float(row[-1])
+                
+                self.scores[word] = intensity
 
-    score = score / len(document_words)
-    return score
 
-def load_data(directory):
-    data = []
-    scores = {}
+    def extract_words(self, sentence):
+        """Convert a sentence into a set of tokens taking in to account multi-word-expressions"""
+        # Create simple tokens of all words in the sentence
+        words = [word.lower() for word in nltk.word_tokenize(sentence) if any(c.isalpha() for c in word)]
+        # Split the tokens into multi-word-expressions, if any
+        tokens = self.mwe_tknzr.tokenize(words)
+        # print(tokens)
+        return set(tokens)
 
-    # Read data in from files
-    with open(os.path.join(directory, 'positives.txt')) as f:
-        for line in f.read().splitlines():
-            
-            row = line.rstrip('\n').split(',')
 
-            word = row[0]
-            intensity = float(row[-1])
-            
+    def compute_score(self, sentence):
+        """Calculate the sentiment score for the given sentence"""
+        document_words = self.extract_words(sentence)
+        score = 0
+        for word in document_words:
+            grade = self.scores.get(word.lower(), 0)
+            if grade == 0:
+                # If the word isn't in the scores dict, try to get the stemmed version of the word from the dict (cars becomes car, abandoned becomes abandon, etc.)
+                grade = self.scores.get(self.stemmer.stem(word.lower()), 0)
+            score += grade
+        # Convert the score in to a -1 to 1 scale
+        score = score / len(document_words)
+        # print(score)
+        return score
 
-            scores[word] = float(intensity)
-            # scores[word] = [float(cell) for cell in row[1:]]
-            data.append({
-                "evidence": [float(cell) for cell in row[1:]],
-                "label": "positive"
-            })
-            
-    with open(os.path.join(directory, 'negatives.txt')) as f:
-        for line in f.read().splitlines():
-            
-            # word, intensity = line.rstrip('\n').split(',')
-            # scores[word] = float(intensity)
-            # data.append({
-            #     "evidence": float(intensity),
-            #     "label": "negative"
-            # })
-            row = line.rstrip('\n').split(',')
 
-            word = row[0]
-            intensity = float(row[-1])
-            
+    def get_sentiment(self, sentence):
+        """Classify the sentence to be positive or negative"""
+        score = self.compute_score(sentence)
+        if score > 0:
+            return ("Positive", score)
+        else:
+            return ("Negative", score)
+    
+    def start(self):
+        print("Keep entering sentences to get a sentiment estimation from the AI")
+        print("Type 'exit' to quit")
+        while True:
+            s = input("Sentence: ")
+            if s == 'exit':
+                break
+            print(self.get_sentiment(s))
 
-            scores[word] = float(intensity)
-            data.append({
-                "evidence": [float(cell) for cell in row[1:]],
-                "label": "negative"
-            })
-
-    return data, scores
-
-def classify(classifier, score):
-    score = np.reshape(score, (1, -1))
-    return classifier.predict(score)
 
 if __name__ == "__main__":
     main()
-
-# Get trending topics from Twitter api
-# Using twint search to get tweets
-# Use NaiveBayes classifier to classify each tweet
-# Return the overall sentiment of the trend

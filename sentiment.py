@@ -1,6 +1,6 @@
 # This one was largely unsuccesful
-# I'm guessing the problem lies in me trying to use positive or negative words to train an ai to classify sentences
-# Used a different approach in sentiment1.py that does work, but definitely unreliable
+# I'm guessing the problem lies in me trying to use just positive or negative words to train an ai to classify sentences
+# Refer to sentiment1.py for working version
 
 
 # Train NaiveBayes classifier from text files
